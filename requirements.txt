@@ -1,6 +1,5 @@
 Flask
 Gunicorn
 
-csv
 logging
 threading
