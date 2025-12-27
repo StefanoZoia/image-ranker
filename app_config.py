@@ -1,6 +1,6 @@
 import os
 
-SYSTEMS_DIRS = ["static/cocos_images", "static/images"]
+SYSTEMS_DIRS = ["cocos_images", "images"]
 DESCR_DIR = "static/refined-jsons"
 
 SAVE_DIR = "results"

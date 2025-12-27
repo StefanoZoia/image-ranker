@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, send_file, Response
+from flask import Flask, render_template, request, jsonify, send_file, current_app
 import os
 import random
 import csv
@@ -26,9 +26,12 @@ def initialize_image_pairs():
     global image_pairs
 
     pairs = list()
-    for img in os.listdir(cfg.SYSTEMS_DIRS[0]):
-        img_path_0 = f"{cfg.SYSTEMS_DIRS[0]}/{img}"
-        img_path_1 = f"{cfg.SYSTEMS_DIRS[1]}/{img}"
+
+    for img in os.listdir(os.path.join(current_app.root_path,
+                        "static", os.path.join(cfg.SYSTEMS_DIRS[0]))):
+
+        img_path_0 = os.path.join("static", cfg.SYSTEMS_DIRS[0], img)
+        img_path_1 = os.path.join("static", cfg.SYSTEMS_DIRS[1], img)
         pairs.append((img_path_0, img_path_1))
 
     image_pairs = pairs
