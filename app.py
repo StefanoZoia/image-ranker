@@ -26,6 +26,7 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db = SQLAlchemy(app)
 
 class UserSession(db.Model):
+    __tablename__ = "user_session"
     id = db.Column(db.Integer, primary_key=True)
     created_at = db.Column(db.DateTime, server_default=db.func.now())
     img_sequence = db.Column(db.JSON, nullable=False)
@@ -37,9 +38,10 @@ class UserSession(db.Model):
     )
 
 class Evaluation(db.Model):
+    __tablename__ = "evaluation"
     id = db.Column(db.Integer, primary_key=True)
     session_id = db.Column(db.Integer,
-                           db.ForeignKey("usersession.id"),
+                           db.ForeignKey("user_session.id"),
                            nullable=False,
                            index=True)
     image_a = db.Column(db.String, nullable=False)
@@ -212,7 +214,7 @@ def health():
 
 
 with app.app_context():
-    initialize_image_pairs()
-
     if os.environ.get("INIT_DB") == "1":
         db.create_all()
+        
+    initialize_image_pairs()
