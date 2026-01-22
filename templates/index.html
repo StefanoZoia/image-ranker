@@ -35,36 +35,36 @@
                 <img id="image1" src="" alt="Image 1">
                 <img id="image2" src="" alt="Image 2">
             </div>
-            <!--div class="image-names">
-                <span id="image1-name"></span>
-                <span id="image2-name"></span>
-            </div-->
+            <div class="image-names">
+                <span id="image1-name">Image A</span>
+                <span id="image2-name">Image B</span>
+            </div>
             <div class="a-b-buttons">
                 <div class="button-group">
                     <div class="action-buttons">
-                        <button id="image1-btn" onclick="selectWinner('image1')">Image A is better <span class="shortcut">(click or &larr; left arrow)</span></button>
+                        <button id="image1-btn" onclick="selectWinner('image1')">A is better <span class="shortcut">(&larr; left arrow)</span></button>
                     </div>
                 </div>
                 <div class="button-group">
                     <div class="action-buttons">
-                        <button id="image2-btn" onclick="selectWinner('image2')">Image B is better <span class="shortcut">(click or &rarr; right arrow)</span></button>
+                        <button id="image2-btn" onclick="selectWinner('image2')">B is better <span class="shortcut">(&rarr; right arrow)</span></button>
                     </div>
                 </div>
             </div>
-            <div class="tie-button">
+            <!--div class="tie-button">
                 <div class="button-group">
                     <div class="action-buttons">
-                        <button id="tie-btn" onclick="selectWinner('tie')">Both equally good <span class="shortcut">(click or N key)</span></button>
+                        <button id="tie-btn" onclick="selectWinner('tie')">No preference<span class="shortcut">(N key)</span></button>
                     </div>
                 </div>
-            </div>
+            </div-->
         </div>
 
         <!-- PROGRESS BAR -->
-        <div class="progress-bar">
+        <!--div class="progress-bar">
             <div id="progress-fill"></div>
         </div>
-        <div id="progress-text"></div>
+        <div id="progress-text"></div-->
 
     </div>
     
@@ -81,7 +81,6 @@
     
     <script>
         let currentImages = {};
-        let max_display = 30;
         
         function updateProgress(progress) {
             const progressFill = document.getElementById('progress-fill');
@@ -111,8 +110,8 @@
                 }else{
                     console.log('Received image data:', data);
                     currentImages = data;
-                    document.getElementById('image1').src = '/serve_image?path=' +  data.image1;
-                    document.getElementById('image2').src = '/serve_image?path=' + data.image2;
+                    document.getElementById('image1').src = data.image1;
+                    document.getElementById('image2').src = data.image2;
                     console.log('Image1 src:', data.image1);
                     console.log('Image2 src:', data.image2);
                     updateProgress(data.progress);

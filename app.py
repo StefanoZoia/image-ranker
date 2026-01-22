@@ -1,41 +1,82 @@
-from flask import Flask, render_template, request, jsonify, send_file, current_app
+from flask import Flask, render_template, request, jsonify, current_app
+from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from sqlalchemy import select
 import os
 import random
-import csv
 import logging
-import threading
 import json
-
-import app_config as cfg
 
 logging.basicConfig(level=logging.DEBUG)
 
 app = Flask(__name__)
 
 image_pairs = []
-sessions_info = dict()
-
-last_session = 0
-
-results_lock = threading.Lock()
-session_lock = threading.Lock()
 
 
+# DB settings
+
+uri = os.environ.get("DATABASE_URL")
+if uri and uri.startswith("postgres://"):
+    uri = uri.replace("postgres://", "postgresql://", 1)
+app.config["SQLALCHEMY_DATABASE_URI"] = uri
+
+app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY")
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+db = SQLAlchemy(app)
+
+class UserSession(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    created_at = db.Column(db.DateTime, server_default=db.func.now())
+    img_sequence = db.Column(db.JSON, nullable=False)
+    next_pair = db.Column(db.Integer, nullable=False, default=0)
+    evaluations = db.relationship(
+        "Evaluation",
+        backref="session",
+        cascade="all, delete-orphan"
+    )
+
+class Evaluation(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    session_id = db.Column(db.Integer,
+                           db.ForeignKey("usersession.id"),
+                           nullable=False,
+                           index=True)
+    image_a = db.Column(db.String, nullable=False)
+    image_b = db.Column(db.String, nullable=False)
+    winner_image = db.Column(db.String, nullable=False)
+    winner_position = db.Column(db.String, nullable=False)
+    timestamp = db.Column(db.DateTime, server_default=db.func.now())
+    __table_args__ = (
+        db.UniqueConstraint("session_id", "image_a", "image_b",
+                            name="uq_session_imagepair"),
+    )
+
+
+def list_images(path):
+    return {
+        f for f in os.listdir(path)
+           if os.path.isfile(os.path.join(path, f))
+           and f.lower().endswith((".png", ".jpg", ".jpeg", ".webp"))
+    }
 
 def initialize_image_pairs():
+    SYSTEMS_DIRS = ["cocos_images", "images"]
     global image_pairs
 
-    pairs = list()
+    pairs = dict()
 
-    for img in os.listdir(os.path.join(current_app.root_path,
-                        "static", os.path.join(cfg.SYSTEMS_DIRS[0]))):
+    dir0 = list_images(os.path.join(current_app.root_path, "static", SYSTEMS_DIRS[0]))
+    dir1 = list_images(os.path.join(current_app.root_path, "static", SYSTEMS_DIRS[1]))
+    common = dir0.intersection(dir1) 
 
-        img_path_0 = os.path.join("static", cfg.SYSTEMS_DIRS[0], img)
-        img_path_1 = os.path.join("static", cfg.SYSTEMS_DIRS[1], img)
-        pairs.append((img_path_0, img_path_1))
+    for img in common:
+        img_path_0 = f"/static/{SYSTEMS_DIRS[0]}/{img}"
+        img_path_1 = f"/static/{SYSTEMS_DIRS[1]}/{img}"
+        basename = os.path.splitext(os.path.basename(img))[0]
+        pairs[basename] = (img_path_0, img_path_1)
 
     image_pairs = pairs
-    random.shuffle(image_pairs)
 
 @app.route('/')
 def index():
@@ -43,32 +84,35 @@ def index():
 
 @app.route('/get_session')
 def get_new_session():
-    with session_lock:
-        global last_session
-        global sessions_info
         global image_pairs
 
-        last_session += 1
-
         # initialize random image pairs sequence
-        indices = list(range(len(image_pairs)))
-        random.shuffle(indices)
-        sessions_info[last_session] = {"img_sequence": indices,
-                                       "next_pair": 0}
-        
-        app.logger.info(f"New session {last_session}: {sessions_info[last_session]}")
+        basenames = list(image_pairs.keys())
+        random.shuffle(basenames)
 
-        return jsonify({'session': last_session})
+        u_session = UserSession(img_sequence=basenames)
+        db.session.add(u_session)
+        db.session.commit()
+        new_session = u_session.id
+        
+        app.logger.info(f"New session {new_session}: {basenames}")
+
+        return jsonify({'session': new_session})
     
 @app.route('/get_images', methods=['POST'])
 def get_images():
     data = request.json
     total_pairs = len(image_pairs)
 
-    # read session data
-    session_id = data['sessionId']
-    session_sequence = sessions_info[session_id]["img_sequence"]
-    session_curr_pair = sessions_info[session_id]["next_pair"]
+    # read user session data
+    u_session_id = data['sessionId']
+    stmt = select(UserSession).where(UserSession.id == u_session_id)
+    user_session = db.session.scalars(stmt).first()
+    if user_session is None:
+        return jsonify({"error": f"session number {u_session_id} not found"}), 400
+    session_sequence = user_session.img_sequence
+    session_curr_pair = user_session.next_pair
+
 
     if session_curr_pair >= len(session_sequence):
         return jsonify({'end': "Thank you for evaluating all the images in our dataset!",
@@ -81,10 +125,15 @@ def get_images():
     img1, img2 = image_pairs[session_sequence[session_curr_pair]]
 
     img_name = os.path.splitext(os.path.basename(img1))[0]
-    descr_filename = f"{cfg.DESCR_DIR}/{img_name}.json"
+    descr_filename = os.path.join(current_app.root_path,
+                                  "static", "refined-jsons", f"{img_name}.json")
     img_info = None
-    with open(descr_filename, encoding="utf-8") as f:
-        img_info = json.loads(f.read())
+
+    try:
+        with open(descr_filename, encoding="utf-8") as f:
+            img_info = json.load(f)
+    except FileNotFoundError:
+        return jsonify({"error": f"Missing description for {img_name}"}), 500
     
     # randomize presentation order of images
     if random.choice([True, False]):
@@ -100,51 +149,70 @@ def get_images():
         }
     })
 
-@app.route('/serve_image')
-def serve_image():
-    image_path = request.args.get('path')
-    if image_path.startswith('/serve_image'):
-        image_path = image_path.split('=', 1)[1]
-    file_extension = os.path.splitext(image_path)[1].lower()
-    if file_extension == '.webp':
-        mimetype = 'image/webp'
-    else:
-        mimetype = 'image/jpeg'
-    return send_file(image_path, mimetype=mimetype)
-
-def save_comparison(img_1, img_2, winner, session_id):
-    comparisons_filename = os.path.join(cfg.SAVE_DIR, f'comparisons_autosave.csv')
-    
-    with results_lock:
-        if not os.path.isfile(comparisons_filename):
-            with open(comparisons_filename, 'w', newline='') as f:
-                writer = csv.writer(f)
-                writer.writerow(['Image 1', 'Image 2', 'Winner', 'Session ID'])
-        
-        with open(comparisons_filename, 'a', newline='') as f:
-                writer = csv.writer(f)
-                writer.writerow([img_1, img_2, winner, session_id])
-
-    app.logger.info(f"Comparison saved in {comparisons_filename}")
 
 @app.route('/update_scores', methods=['POST'])
 def update_scores():
-    global sessions_info
 
     data = request.json
     image1 = data['image1']
     image2 = data['image2']
     winner = data['winner']
-    session_id = data['sessionId']
+    u_session_id = data['sessionId']
 
-    # update session data
-    sessions_info[session_id]["next_pair"] += 1
-    app.logger.info(f"Updated session {session_id}: {sessions_info[session_id]}")
+    img_a, img_b = sorted([image1, image2])
+    winner_img, winner_pos = None
+    if winner == "image1":
+        winner_img = image1
+        winner_pos = "left"
+    elif winner == "image2":
+        winner_img = image2
+        winner_pos = "right"
+    else:
+        return jsonify({"error": f"winner {winner} not valid"}), 500
+
+    # get user session data
+    stmt = select(UserSession).where(UserSession.id == u_session_id)
+    user_session = db.session.scalars(stmt).first()
+    if user_session is None:
+        return jsonify({"error": f"session number {u_session_id} not found"}), 400
     
-    save_comparison(image1, image2, winner, session_id)
-    return jsonify({'success': True})
+    try:
+        # save the new evaluation
+        db.session.add(Evaluation(
+            session_id = u_session_id,
+            image_a = image1,
+            image_b = image2,
+            winner_image = winner_img,
+            winner_position = winner_pos
+        ))
+
+        # update user session data
+        user_session.next_pair += 1
+
+        # commit to db
+        db.session.commit()
+
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({"status": "already_submitted"}), 200
+    
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        app.logger.error(f"DB error: {e}")
+        return jsonify({"error": "Database error"}), 500
+
+    app.logger.info(f"Updated session {u_session_id}: next pair {user_session.next_pair}")
+    
+    return jsonify({"status": "ok"}), 200
 
 
-if __name__ == '__main__':
+@app.route("/health")
+def health():
+    return "OK"
+
+
+with app.app_context():
     initialize_image_pairs()
-    app.run(debug=False, threaded=True)
+
+    if os.environ.get("INIT_DB") == "1":
+        db.create_all()
