@@ -2,6 +2,7 @@ from flask import Flask, render_template, request, jsonify, current_app
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy import select
+from flask_migrate import Migrate
 import os
 import random
 import logging
@@ -23,7 +24,11 @@ app.config["SQLALCHEMY_DATABASE_URI"] = uri
 
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY")
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-db = SQLAlchemy(app)
+
+db = SQLAlchemy()
+migrate = Migrate()
+db.init_app(app)
+migrate.init_app(app, db)
 
 class UserSession(db.Model):
     __tablename__ = "user_session"
@@ -214,7 +219,4 @@ def health():
 
 
 with app.app_context():
-    if os.environ.get("INIT_DB") == "1":
-        db.create_all()
-        
     initialize_image_pairs()
