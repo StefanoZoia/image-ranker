@@ -167,7 +167,8 @@ def update_scores():
     u_session_id = data['sessionId']
 
     img_a, img_b = sorted([image1, image2])
-    winner_img, winner_pos = None
+    winner_img = None
+    winner_pos = None
     if winner == "image1":
         winner_img = image1
         winner_pos = "left"
@@ -187,8 +188,8 @@ def update_scores():
         # save the new evaluation
         db.session.add(Evaluation(
             session_id = u_session_id,
-            image_a = image1,
-            image_b = image2,
+            image_a = img_a,
+            image_b = img_b,
             winner_image = winner_img,
             winner_position = winner_pos
         ))
@@ -220,3 +221,6 @@ def health():
 
 with app.app_context():
     initialize_image_pairs()
+
+if __name__ == '__main__':
+    app.run(debug=True, threaded=True)

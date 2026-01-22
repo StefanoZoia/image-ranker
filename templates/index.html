@@ -7,6 +7,7 @@
     <meta property="og:title" content="Image Ranker">
     <meta property="og:type" content="website">
     <title>Image Ranker</title>
+    <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
     <style>
@@ -106,21 +107,21 @@
                 if (data.end) {
                     document.getElementById('img-comp').remove();
                     document.removeEventListener('keydown', keyListener)
-                    updateProgress(data.progress);
+                    //updateProgress(data.progress);
                 }else{
                     console.log('Received image data:', data);
                     currentImages = data;
                     document.getElementById('image1').src = data.image1;
                     document.getElementById('image2').src = data.image2;
-                    console.log('Image1 src:', data.image1);
-                    console.log('Image2 src:', data.image2);
-                    updateProgress(data.progress);
+                    //console.log(data.descriptions, typeof data.descriptions);
+                    //updateProgress(data.progress);
 
                     const descrList = document.getElementById('descriptions-list');
                     descrList.innerHTML = '';
+                    
                     data.descriptions.forEach(desc => {
                         const li = document.createElement('li');
-                        li.textContent = desc
+                        li.textContent = desc;
                         descrList.appendChild(li);
                     });
 
