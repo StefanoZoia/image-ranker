@@ -146,10 +146,14 @@ def get_images():
     if random.choice([True, False]):
         img1, img2 = img2, img1
 
+    # build a single string representing the description of the image
+    descriptions = [d.rstrip(".") for d in img_info["descriptions"]]
+    descr = f'"{" and ".join(descriptions)}"'
+
     return jsonify({
         'image1':  img1,
         'image2':  img2,
-        'descriptions': img_info["descriptions"],
+        'description': descr,
         'progress': {
             'current': session_curr_pair,
             'total': total_pairs

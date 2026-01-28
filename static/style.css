@@ -526,10 +526,11 @@ button:active {
 }
 .footer-section h3 {
     font-size: 18px;
-    margin-bottom: 15px;
+    margin-bottom: 10px;
     color: #333;
 }
 .footer-section p {
+    margin-bottom: 10px;
     font-size: 14px;
     line-height: 1.5;
     color: #666;
