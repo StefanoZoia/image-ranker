@@ -13,6 +13,7 @@ logging.basicConfig(level=logging.DEBUG)
 app = Flask(__name__)
 
 image_pairs = []
+control_pairs = []
 
 
 # DB settings
@@ -69,13 +70,14 @@ def list_images(path):
 
 def initialize_image_pairs():
     SYSTEMS_DIRS = ["cocos_images", "images"]
+    CONTROL_DIRS = ["control_winners", "control_losers"]
+    
     global image_pairs
-
     pairs = dict()
 
     dir0 = list_images(os.path.join(current_app.root_path, "static", SYSTEMS_DIRS[0]))
     dir1 = list_images(os.path.join(current_app.root_path, "static", SYSTEMS_DIRS[1]))
-    common = dir0.intersection(dir1) 
+    common = dir0.intersection(dir1)
 
     for img in common:
         img_path_0 = f"/static/{SYSTEMS_DIRS[0]}/{img}"
@@ -84,6 +86,21 @@ def initialize_image_pairs():
         pairs[basename] = (img_path_0, img_path_1)
 
     image_pairs = pairs
+    
+    global control_pairs
+    pairs = dict()
+
+    dir0 = list_images(os.path.join(current_app.root_path, "static", CONTROL_DIRS[0]))
+    dir1 = list_images(os.path.join(current_app.root_path, "static", CONTROL_DIRS[1]))
+    common = dir0.intersection(dir1)
+
+    for img in common:
+        img_path_0 = f"/static/{CONTROL_DIRS[0]}/{img}"
+        img_path_1 = f"/static/{CONTROL_DIRS[1]}/{img}"
+        basename = os.path.splitext(os.path.basename(img))[0]
+        pairs[basename] = (img_path_0, img_path_1)
+
+    control_pairs = pairs
 
 @app.route('/')
 def index():
@@ -91,25 +108,53 @@ def index():
 
 @app.route('/get_session')
 def get_new_session():
-        global image_pairs
+        # one control image every BATCH_LEN evaluation images
+        BATCH_LEN = 5
 
-        # initialize random image pairs sequence
+        global image_pairs
+        global control_pairs
+
+        # shuffle image pairs
         basenames = list(image_pairs.keys())
         random.shuffle(basenames)
+        print(len(basenames))
 
-        u_session = UserSession(img_sequence=basenames)
+        control_basenames = list(control_pairs.keys())
+        random.shuffle(control_basenames)
+        print(len(control_basenames))
+
+        # build sequence
+        sequence = list()
+        i = 0  #batch index
+        j = 0  #basenames index
+        while j < len(basenames):
+            # read the next BATCH_LEN regular images
+            batch = basenames[j : j + BATCH_LEN]
+            j += BATCH_LEN
+
+            # insert next control image in random position
+            control_image = control_basenames[i % len(control_basenames)]
+            batch.insert(random.randrange(BATCH_LEN+1), control_image)
+
+            # append this batch to the session sequence
+            sequence.extend(batch)
+            i += 1
+            
+
+        print(len(sequence))
+
+        u_session = UserSession(img_sequence=sequence)
         db.session.add(u_session)
         db.session.commit()
         new_session = u_session.id
         
-        app.logger.info(f"New session {new_session}: {basenames}")
+        app.logger.info(f"New session {new_session}: {sequence}")
 
         return jsonify({'session': new_session})
     
 @app.route('/get_images', methods=['POST'])
 def get_images():
     data = request.json
-    total_pairs = len(image_pairs)
 
     # read user session data
     u_session_id = data['sessionId']
@@ -118,10 +163,11 @@ def get_images():
     if user_session is None:
         return jsonify({"error": f"session number {u_session_id} not found"}), 400
     session_sequence = user_session.img_sequence
+    total_pairs = len(session_sequence)
     session_curr_pair = user_session.next_pair
 
 
-    if session_curr_pair >= len(session_sequence):
+    if session_curr_pair >= total_pairs:
         return jsonify({'end': "Thank you for evaluating all the images in our dataset!",
                         'progress': {
                             'current': session_curr_pair,
@@ -129,7 +175,8 @@ def get_images():
                         }})
 
     # read next pair from the preordered list for this session
-    img1, img2 = image_pairs[session_sequence[session_curr_pair]]
+    basename = session_sequence[session_curr_pair]
+    img1, img2 = image_pairs[basename] if basename in image_pairs else control_pairs[basename]
 
     img_name = os.path.splitext(os.path.basename(img1))[0]
     descr_filename = os.path.join(current_app.root_path,
